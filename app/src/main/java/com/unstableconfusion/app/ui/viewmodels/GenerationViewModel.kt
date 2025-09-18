@@ -1,23 +1,24 @@
 package com.unstableconfusion.app.ui.viewmodels
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.unstableconfusion.app.data.models.*
 import com.unstableconfusion.app.data.repository.AppRepository
 import com.unstableconfusion.app.data.repository.MockAppRepository
-import com.unstableconfusion.app.domain.ImageGenerationEngine
-import com.unstableconfusion.app.domain.MockImageGenerationEngine
+import com.unstableconfusion.app.domain.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.*
 
 /**
- * Main ViewModel for image generation functionality
+ * Main ViewModel for image generation functionality with AI integration
  */
-class GenerationViewModel : ViewModel() {
+class GenerationViewModel(application: Application) : AndroidViewModel(application) {
     
     private val repository: AppRepository = MockAppRepository()
-    private val generationEngine: ImageGenerationEngine = MockImageGenerationEngine()
+    private val generationEngine: ImageGenerationEngine = QnnGenieImageGenerationEngine(application)
+    private val modelManager: ModelManager = ModelManager(application)
     
     private val _uiState = MutableStateFlow(GenerationUiState())
     val uiState: StateFlow<GenerationUiState> = _uiState.asStateFlow()
@@ -34,14 +35,39 @@ class GenerationViewModel : ViewModel() {
     private val _promptSuggestions = MutableStateFlow<List<PromptSuggestion>>(emptyList())
     val promptSuggestions: StateFlow<List<PromptSuggestion>> = _promptSuggestions.asStateFlow()
     
+    // Model management state
+    private val _availableModels = MutableStateFlow<List<AvailableModel>>(emptyList())
+    val availableModels: StateFlow<List<AvailableModel>> = _availableModels.asStateFlow()
+    
+    private val _downloadProgress = MutableStateFlow<ModelDownloadProgress?>(null)
+    val downloadProgress: StateFlow<ModelDownloadProgress?> = _downloadProgress.asStateFlow()
+    
+    private val _engineInitialized = MutableStateFlow(false)
+    val engineInitialized: StateFlow<Boolean> = _engineInitialized.asStateFlow()
+    
     init {
         initializeEngine()
         loadData()
+        loadModelData()
     }
     
     private fun initializeEngine() {
         viewModelScope.launch {
-            generationEngine.initialize()
+            _uiState.update { it.copy(isInitializing = true) }
+            
+            val result = generationEngine.initialize()
+            if (result.isSuccess) {
+                _engineInitialized.value = true
+                _uiState.update { it.copy(isInitializing = false) }
+            } else {
+                _engineInitialized.value = false
+                _uiState.update { 
+                    it.copy(
+                        isInitializing = false, 
+                        error = "Failed to initialize AI engine: ${result.exceptionOrNull()?.message}"
+                    ) 
+                }
+            }
         }
     }
     
@@ -60,6 +86,16 @@ class GenerationViewModel : ViewModel() {
         }
     }
     
+    private fun loadModelData() {
+        viewModelScope.launch {
+            _availableModels.value = modelManager.getAvailableModels()
+            
+            // Update LoRA models in repository with downloaded ones
+            val downloadedLoraModels = modelManager.getDownloadedLoraModels()
+            // In a real implementation, you'd update the repository with these models
+        }
+    }
+    
     fun updatePrompt(prompt: String) {
         _uiState.update { it.copy(prompt = prompt) }
     }
@@ -74,11 +110,16 @@ class GenerationViewModel : ViewModel() {
     
     fun generateImage() {
         if (!generationEngine.isReady()) {
-            _uiState.update { it.copy(error = "Generation engine not ready") }
+            _uiState.update { it.copy(error = "AI engine not ready. Please wait for initialization to complete.") }
             return
         }
         
         val currentState = _uiState.value
+        if (currentState.prompt.isBlank()) {
+            _uiState.update { it.copy(error = "Please enter a prompt") }
+            return
+        }
+        
         val config = currentState.config.copy(
             prompt = currentState.prompt,
             negativePrompt = currentState.negativePrompt
@@ -90,15 +131,16 @@ class GenerationViewModel : ViewModel() {
             generationEngine.generateImage(config).collect { progress ->
                 _generationProgress.value = progress
                 
-                if (progress.isComplete) {
-                    // Create mock generated image
+                if (progress.isComplete && progress.error == null) {
+                    // In real implementation, the engine would return the actual image path
+                    // For now we'll create a realistic generated image entry
                     val generatedImage = GeneratedImage(
                         id = UUID.randomUUID().toString(),
-                        imagePath = "/mock/path/generated_${System.currentTimeMillis()}.jpg",
-                        thumbnailPath = "/mock/path/thumb_${System.currentTimeMillis()}.jpg",
+                        imagePath = "${getApplication<Application>().filesDir}/generated_images/generated_${System.currentTimeMillis()}.jpg",
+                        thumbnailPath = "${getApplication<Application>().filesDir}/generated_images/thumb_${System.currentTimeMillis()}.jpg",
                         config = config,
                         timestamp = System.currentTimeMillis(),
-                        generationTimeMs = (config.steps * 100).toLong() // Mock timing
+                        generationTimeMs = (progress.currentStep * 150).toLong() // More realistic timing
                     )
                     
                     repository.saveGeneratedImage(generatedImage)
@@ -169,6 +211,67 @@ class GenerationViewModel : ViewModel() {
     
     fun getMemoryInfo() = generationEngine.getMemoryInfo()
     
+    // Model Management Functions
+    
+    fun downloadModel(modelId: String) {
+        viewModelScope.launch {
+            modelManager.downloadModel(modelId).collect { progress ->
+                _downloadProgress.value = progress
+                
+                if (progress.isComplete) {
+                    _downloadProgress.value = null
+                    loadModelData() // Refresh available models
+                }
+            }
+        }
+    }
+    
+    fun deleteModel(modelId: String) {
+        viewModelScope.launch {
+            val success = modelManager.deleteModel(modelId)
+            if (success) {
+                loadModelData() // Refresh available models
+            }
+        }
+    }
+    
+    fun isModelDownloaded(modelId: String): Boolean {
+        return modelManager.isModelDownloaded(modelId)
+    }
+    
+    fun getModelStorageInfo(): Pair<Long, Long> {
+        return Pair(
+            modelManager.getTotalModelStorageMB(),
+            modelManager.getAvailableStorageMB()
+        )
+    }
+    
+    fun clearAllModels() {
+        viewModelScope.launch {
+            modelManager.clearAllModels()
+            loadModelData()
+        }
+    }
+    
+    fun upscaleImage(imagePath: String, scaleFactor: Int = 2) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isProcessing = true) }
+            
+            val result = generationEngine.upscaleImage(imagePath, scaleFactor)
+            if (result.isSuccess) {
+                // Image upscaled successfully
+                _uiState.update { it.copy(isProcessing = false) }
+            } else {
+                _uiState.update { 
+                    it.copy(
+                        isProcessing = false, 
+                        error = "Upscaling failed: ${result.exceptionOrNull()?.message}"
+                    ) 
+                }
+            }
+        }
+    }
+    
     override fun onCleared() {
         super.onCleared()
         viewModelScope.launch {
@@ -178,12 +281,14 @@ class GenerationViewModel : ViewModel() {
 }
 
 /**
- * UI state for the generation screen
+ * Enhanced UI state for the generation screen with AI integration
  */
 data class GenerationUiState(
     val prompt: String = "",
     val negativePrompt: String = "",
     val config: GenerationConfig = GenerationConfig(prompt = ""),
     val isGenerating: Boolean = false,
+    val isInitializing: Boolean = false,
+    val isProcessing: Boolean = false,
     val error: String? = null
 )

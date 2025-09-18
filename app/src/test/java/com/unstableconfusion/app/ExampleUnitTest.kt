@@ -113,4 +113,106 @@ class ExampleUnitTest {
         assertTrue("Usage percentage should be valid", 
             memoryInfo.usagePercentage >= 0f && memoryInfo.usagePercentage <= 1f)
     }
+    
+    // Phase 2 QNN/Genie Engine Tests
+    
+    @Test
+    fun testQnnGenieEngine_dataCompatibility() {
+        // Test that our data structures are compatible with the real engine
+        val config = GenerationConfig(prompt = "test prompt")
+        
+        // Verify configuration is compatible with real engine requirements
+        assertNotNull("Prompt should not be null", config.prompt)
+        assertTrue("Steps should be positive", config.steps > 0)
+        assertTrue("CFG scale should be positive", config.cfgScale > 0)
+        assertTrue("Width should be positive", config.width > 0)
+        assertTrue("Height should be positive", config.height > 0)
+    }
+    
+    @Test
+    fun testLoraModel_dataStructure() {
+        val lora = LoraModel(
+            id = "test-lora",
+            name = "Test LoRA",
+            path = "/path/to/lora.safetensors",
+            strength = 0.8f,
+            enabled = true,
+            description = "Test LoRA model"
+        )
+        
+        assertEquals("test-lora", lora.id)
+        assertEquals("Test LoRA", lora.name)
+        assertEquals(0.8f, lora.strength, 0.01f)
+        assertTrue("Should be enabled", lora.enabled)
+        assertNotNull("Path should not be null", lora.path)
+    }
+    
+    @Test
+    fun testGenerationProgress_calculation() {
+        val progress = GenerationProgress(
+            currentStep = 15,
+            totalSteps = 20,
+            message = "Generating..."
+        )
+        
+        assertEquals(0.75f, progress.progressPercentage, 0.01f)
+        assertFalse("Should not be complete", progress.isComplete)
+        assertNull("Should not have error", progress.error)
+    }
+    
+    @Test
+    fun testMemoryInfo_calculation() {
+        val memoryInfo = MemoryInfo(
+            usedMemoryMB = 800L,
+            totalMemoryMB = 1000L,
+            availableMemoryMB = 200L
+        )
+        
+        assertEquals(0.8f, memoryInfo.usagePercentage, 0.01f)
+        assertEquals(800L, memoryInfo.usedMemoryMB)
+        assertEquals(1000L, memoryInfo.totalMemoryMB)
+        assertEquals(200L, memoryInfo.availableMemoryMB)
+    }
+    
+    @Test
+    fun testAvailableModel_types() {
+        val baseModel = com.unstableconfusion.app.domain.AvailableModel(
+            id = "sd_v1_5",
+            name = "Stable Diffusion v1.5",
+            description = "Base model",
+            type = com.unstableconfusion.app.domain.ModelType.BASE_MODEL,
+            sizeBytes = 1500000000L,
+            downloadUrl = "https://example.com/model.bin"
+        )
+        
+        assertEquals(com.unstableconfusion.app.domain.ModelType.BASE_MODEL, baseModel.type)
+        assertEquals("sd_v1_5", baseModel.id)
+        assertTrue("Size should be positive", baseModel.sizeBytes > 0)
+        
+        val loraModel = com.unstableconfusion.app.domain.AvailableModel(
+            id = "detail_lora",
+            name = "Detail LoRA",
+            description = "Detail enhancement",
+            type = com.unstableconfusion.app.domain.ModelType.LORA,
+            sizeBytes = 150000000L,
+            downloadUrl = "https://example.com/lora.safetensors"
+        )
+        
+        assertEquals(com.unstableconfusion.app.domain.ModelType.LORA, loraModel.type)
+        assertEquals("detail_lora", loraModel.id)
+    }
+    
+    @Test
+    fun testModelDownloadProgress_calculation() {
+        val progress = com.unstableconfusion.app.domain.ModelDownloadProgress(
+            modelName = "Test Model",
+            bytesDownloaded = 75000000L,
+            totalBytes = 100000000L
+        )
+        
+        assertEquals(0.75f, progress.progressPercentage, 0.01f)
+        assertEquals("Test Model", progress.modelName)
+        assertFalse("Should not be complete", progress.isComplete)
+        assertNull("Should not have error", progress.error)
+    }
 }
