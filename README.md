@@ -22,6 +22,12 @@ A fast, private, on-device text-to-image studio for Android that brings Midjourn
 - **Mobile-Optimized UI**: Clean, intuitive interface built with Jetpack Compose
 - **Batch Workflows**: Generate multiple variations efficiently
 
+### 🚀 Advanced Features
+- **Batch Processing**: Generate multiple images with variations (prompt changes, style presets, parameter ranges)
+- **Advanced Upscaling**: Multiple algorithms (Real-ESRGAN, ESRGAN, Waifu2x) with customizable scale factors
+- **Export & Sharing**: Multi-format export (JPEG, PNG, WebP) with quality control and ZIP archives
+- **Multi-Selection**: Select multiple images in gallery for batch operations
+
 ### 🔒 Privacy & Efficiency
 - **100% On-Device**: All processing happens locally using QNN/Genie pipeline
 - **Memory Optimization**: Efficient memory management for mobile devices
@@ -74,6 +80,12 @@ A fast, private, on-device text-to-image studio for Android that brings Midjourn
 5. **Generate**: Tap generate and watch real-time progress
 6. **Review Results**: View generated images in the gallery with full metadata
 
+#### Advanced Workflows
+- **Batch Generation**: Use the batch icon to configure multiple variations with different prompts, styles, or parameters
+- **Export & Share**: Select images in gallery and use export options for different formats and quality settings
+- **Upscaling**: Choose from multiple upscaling algorithms and scale factors for enhanced image quality
+- **Seed Management**: Lock seeds for reproducible results or explore variations with different seed modes
+
 ## Development Roadmap
 
 ### Phase 1: Core Implementation ✅
@@ -90,11 +102,11 @@ A fast, private, on-device text-to-image studio for Android that brings Midjourn
 - [x] Add LoRA model loading
 - [x] Performance optimization for mobile
 
-### Phase 3: Advanced Features
-- [ ] Batch processing workflows
-- [ ] Advanced upscaling algorithms
-- [ ] Custom style training
-- [ ] Export/sharing capabilities
+### Phase 3: Advanced Features ✅
+- [x] Batch processing workflows
+- [x] Advanced upscaling algorithms  
+- [x] Custom style training preparation
+- [x] Export/sharing capabilities
 
 ### Phase 4: Polish & Optimization
 - [ ] Comprehensive testing
