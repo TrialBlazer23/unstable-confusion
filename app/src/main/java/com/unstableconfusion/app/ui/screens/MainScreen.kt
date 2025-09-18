@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -22,7 +23,10 @@ import com.unstableconfusion.app.ui.viewmodels.GenerationViewModel
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
-    val generationViewModel: GenerationViewModel = viewModel()
+    val context = LocalContext.current
+    val generationViewModel: GenerationViewModel = viewModel { 
+        GenerationViewModel(context.applicationContext as android.app.Application) 
+    }
     
     Scaffold(
         bottomBar = {
