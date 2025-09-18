@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content xmlns:android="http://schemas.android.com/apk/res/android">
+   <!-- Exclude any cache directories -->
+   <exclude domain="file" path="cache/" />
+   <exclude domain="file" path="code_cache/" />
+</full-backup-content>
