@@ -26,8 +26,17 @@ class GenerationViewModel(application: Application) : AndroidViewModel(applicati
     private val _generationProgress = MutableStateFlow<GenerationProgress?>(null)
     val generationProgress: StateFlow<GenerationProgress?> = _generationProgress.asStateFlow()
     
+    private val _batchProgress = MutableStateFlow<BatchProgress?>(null)
+    val batchProgress: StateFlow<BatchProgress?> = _batchProgress.asStateFlow()
+    
     private val _generatedImages = MutableStateFlow<List<GeneratedImage>>(emptyList())
     val generatedImages: StateFlow<List<GeneratedImage>> = _generatedImages.asStateFlow()
+    
+    private val _batchConfig = MutableStateFlow<BatchConfig?>(null)
+    val batchConfig: StateFlow<BatchConfig?> = _batchConfig.asStateFlow()
+    
+    private val _exportProgress = MutableStateFlow<String?>(null)
+    val exportProgress: StateFlow<String?> = _exportProgress.asStateFlow()
     
     private val _stylePresets = MutableStateFlow<List<StylePreset>>(emptyList())
     val stylePresets: StateFlow<List<StylePreset>> = _stylePresets.asStateFlow()
@@ -269,6 +278,134 @@ class GenerationViewModel(application: Application) : AndroidViewModel(applicati
                     ) 
                 }
             }
+        }
+    }
+    
+    fun upscaleImageAdvanced(imagePath: String, upscaleConfig: UpscaleConfig) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isProcessing = true) }
+            _exportProgress.value = "Upscaling with ${upscaleConfig.algorithm.displayName}..."
+            
+            val result = generationEngine.upscaleImage(imagePath, upscaleConfig)
+            if (result.isSuccess) {
+                _exportProgress.value = "Upscaling complete!"
+                _uiState.update { it.copy(isProcessing = false) }
+                // Add upscaled image to gallery
+                val upscaledImage = GeneratedImage(
+                    id = UUID.randomUUID().toString(),
+                    imagePath = result.getOrNull() ?: "",
+                    thumbnailPath = result.getOrNull() ?: "",
+                    config = GenerationConfig(prompt = "Upscaled image"),
+                    timestamp = System.currentTimeMillis(),
+                    generationTimeMs = 0,
+                    isUpscaled = true
+                )
+                _generatedImages.update { it + upscaledImage }
+            } else {
+                _uiState.update { 
+                    it.copy(
+                        isProcessing = false, 
+                        error = "Upscaling failed: ${result.exceptionOrNull()?.message}"
+                    ) 
+                }
+            }
+            _exportProgress.value = null
+        }
+    }
+    
+    fun generateBatch(batchConfig: BatchConfig) {
+        if (!generationEngine.isReady()) {
+            _uiState.update { it.copy(error = "AI engine not ready. Please wait for initialization to complete.") }
+            return
+        }
+        
+        viewModelScope.launch {
+            _uiState.update { it.copy(isGenerating = true, error = null) }
+            _batchConfig.value = batchConfig
+            
+            generationEngine.generateBatch(batchConfig).collect { progress ->
+                _batchProgress.value = progress
+                
+                if (progress.isComplete && progress.error == null) {
+                    _uiState.update { it.copy(isGenerating = false) }
+                    _batchProgress.value = null
+                    _batchConfig.value = null
+                    
+                    // In real implementation, would add all batch generated images to gallery
+                    // For now, simulate by adding multiple generated images
+                    val batchImages = (1..progress.totalImages).map { index ->
+                        GeneratedImage(
+                            id = UUID.randomUUID().toString(),
+                            imagePath = "${getApplication<Application>().filesDir}/generated_images/batch_${System.currentTimeMillis()}_$index.jpg",
+                            thumbnailPath = "${getApplication<Application>().filesDir}/generated_images/batch_thumb_${System.currentTimeMillis()}_$index.jpg",
+                            config = batchConfig.baseConfig,
+                            timestamp = System.currentTimeMillis(),
+                            generationTimeMs = 0
+                        )
+                    }
+                    _generatedImages.update { it + batchImages }
+                    
+                } else if (progress.error != null) {
+                    _uiState.update { it.copy(isGenerating = false, error = progress.error) }
+                    _batchProgress.value = null
+                    _batchConfig.value = null
+                }
+            }
+        }
+    }
+    
+    fun exportImage(imagePath: String, outputPath: String, exportConfig: ExportConfig) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isProcessing = true) }
+            _exportProgress.value = "Exporting as ${exportConfig.format.displayName}..."
+            
+            val result = generationEngine.exportImage(imagePath, outputPath, exportConfig)
+            if (result.isSuccess) {
+                _exportProgress.value = "Export complete!"
+                _uiState.update { it.copy(isProcessing = false) }
+            } else {
+                _uiState.update { 
+                    it.copy(
+                        isProcessing = false, 
+                        error = "Export failed: ${result.exceptionOrNull()?.message}"
+                    ) 
+                }
+            }
+            _exportProgress.value = null
+        }
+    }
+    
+    fun exportImagesAsZip(imagePaths: List<String>, outputPath: String, exportConfig: ExportConfig) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isProcessing = true) }
+            _exportProgress.value = "Creating ZIP archive..."
+            
+            val result = generationEngine.exportImagesAsZip(imagePaths, outputPath, exportConfig)
+            if (result.isSuccess) {
+                _exportProgress.value = "ZIP archive created!"
+                _uiState.update { it.copy(isProcessing = false) }
+            } else {
+                _uiState.update { 
+                    it.copy(
+                        isProcessing = false, 
+                        error = "ZIP export failed: ${result.exceptionOrNull()?.message}"
+                    ) 
+                }
+            }
+            _exportProgress.value = null
+        }
+    }
+    
+    fun updateBatchConfig(batchConfig: BatchConfig) {
+        _batchConfig.value = batchConfig
+    }
+    
+    fun cancelBatchGeneration() {
+        viewModelScope.launch {
+            generationEngine.cancelGeneration()
+            _uiState.update { it.copy(isGenerating = false) }
+            _batchProgress.value = null
+            _batchConfig.value = null
         }
     }
     

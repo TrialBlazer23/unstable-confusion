@@ -132,6 +132,124 @@ class QnnGenieImageGenerationEngine(
         }
     }
     
+    override fun generateBatch(batchConfig: BatchConfig): Flow<BatchProgress> = flow {
+        if (!isReady()) {
+            emit(BatchProgress(0, 0, null, error = "Engine not initialized"))
+            return@flow
+        }
+        
+        if (isGenerating) {
+            emit(BatchProgress(0, 0, null, error = "Another generation is in progress"))
+            return@flow
+        }
+        
+        isGenerating = true
+        shouldCancel = false
+        
+        try {
+            // Calculate total images and generate configurations
+            val configs = generateBatchConfigurations(batchConfig)
+            val totalImages = configs.size
+            var completedImages = 0
+            
+            emit(BatchProgress(totalImages, completedImages, null))
+            
+            for (config in configs) {
+                if (shouldCancel) {
+                    emit(BatchProgress(totalImages, completedImages, null, error = "Batch generation cancelled"))
+                    return@flow
+                }
+                
+                // Generate each image
+                generateImage(config).collect { progress ->
+                    emit(BatchProgress(totalImages, completedImages, progress))
+                    
+                    if (progress.isComplete && progress.error == null) {
+                        completedImages++
+                        emit(BatchProgress(totalImages, completedImages, null))
+                    } else if (progress.error != null) {
+                        emit(BatchProgress(totalImages, completedImages, null, error = progress.error))
+                        return@flow
+                    }
+                }
+            }
+            
+            emit(BatchProgress(totalImages, completedImages, null, isComplete = true))
+            
+        } catch (e: Exception) {
+            emit(BatchProgress(0, 0, null, error = "Batch generation failed: ${e.message}"))
+        } finally {
+            isGenerating = false
+        }
+    }
+    
+    override suspend fun upscaleImage(imagePath: String, upscaleConfig: UpscaleConfig): Result<String> {
+        return try {
+            if (!isReady()) {
+                return Result.failure(Exception("Engine not initialized"))
+            }
+            
+            // In real implementation, this would use the specified upscaling algorithm
+            val baseTime = 2000L
+            val algorithmMultiplier = when (upscaleConfig.algorithm) {
+                UpscaleAlgorithm.REAL_ESRGAN -> 3.0
+                UpscaleAlgorithm.ESRGAN -> 2.5
+                UpscaleAlgorithm.WAIFU2X -> 2.0
+                UpscaleAlgorithm.BICUBIC -> 0.5
+                UpscaleAlgorithm.LANCZOS -> 0.3
+            }
+            val scaleTime = (baseTime * algorithmMultiplier * upscaleConfig.scaleFactor / 2).toLong()
+            delay(scaleTime)
+            
+            val inputFile = File(imagePath)
+            val outputPath = "${inputFile.parentFile}/${inputFile.nameWithoutExtension}_upscaled_${upscaleConfig.scaleFactor}x_${upscaleConfig.algorithm.name.lowercase()}.jpg"
+            
+            // Simulate upscaling with the specified algorithm
+            createUpscaledPlaceholder(imagePath, outputPath, upscaleConfig.scaleFactor)
+            
+            Result.success(outputPath)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    override suspend fun exportImage(imagePath: String, outputPath: String, exportConfig: ExportConfig): Result<String> {
+        return try {
+            delay(500) // Simulate export processing
+            
+            val inputFile = File(imagePath)
+            val finalPath = "$outputPath.${exportConfig.format.extension}"
+            
+            // In real implementation, would convert format and apply settings
+            // For now, simulate by copying with new extension
+            inputFile.copyTo(File(finalPath))
+            
+            Result.success(finalPath)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    override suspend fun exportImagesAsZip(imagePaths: List<String>, outputPath: String, exportConfig: ExportConfig): Result<String> {
+        return try {
+            // Simulate ZIP creation time based on number of images
+            delay(500L * imagePaths.size)
+            
+            val zipPath = "$outputPath.zip"
+            
+            // In real implementation, would create actual ZIP archive
+            // For now, just simulate successful ZIP creation
+            
+            Result.success(zipPath)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    override suspend fun upscaleImage(imagePath: String, scaleFactor: Int): Result<String> {
+        return upscaleImage(imagePath, UpscaleConfig(scaleFactor = scaleFactor))
+    }
+    
     override suspend fun upscaleImage(imagePath: String, scaleFactor: Int): Result<String> {
         return try {
             if (!isReady()) {
@@ -300,5 +418,67 @@ class QnnGenieImageGenerationEngine(
         }
         
         bitmap.recycle()
+    }
+    
+    // Helper methods for batch generation (reuse from MockImageGenerationEngine)
+    private fun generateBatchConfigurations(batchConfig: BatchConfig): List<GenerationConfig> {
+        val configs = mutableListOf<GenerationConfig>()
+        val baseConfig = batchConfig.baseConfig
+        
+        // Start with base configurations for batch size
+        repeat(baseConfig.batchSize) { index ->
+            val seed = when (batchConfig.seedMode) {
+                BatchSeedMode.RANDOM -> Random().nextLong()
+                BatchSeedMode.SEQUENTIAL -> (baseConfig.seed ?: 0L) + index
+                BatchSeedMode.FIXED -> baseConfig.seed ?: Random().nextLong()
+            }
+            configs.add(baseConfig.copy(seed = seed, batchSize = 1))
+        }
+        
+        // Apply variations
+        var currentConfigs = configs.toList()
+        
+        batchConfig.variations.forEach { variation ->
+            currentConfigs = applyVariation(currentConfigs, variation)
+        }
+        
+        return currentConfigs
+    }
+    
+    private fun applyVariation(configs: List<GenerationConfig>, variation: BatchVariation): List<GenerationConfig> {
+        val newConfigs = mutableListOf<GenerationConfig>()
+        
+        configs.forEach { config ->
+            when (variation.type) {
+                BatchVariationType.PROMPT_VARIATIONS -> {
+                    variation.values.forEach { promptVariation ->
+                        newConfigs.add(config.copy(prompt = "$promptVariation ${config.prompt}"))
+                    }
+                }
+                BatchVariationType.STYLE_PRESETS -> {
+                    variation.values.forEach { styleId ->
+                        // In real implementation, would lookup actual style preset
+                        newConfigs.add(config.copy(prompt = "${config.prompt}, $styleId style"))
+                    }
+                }
+                BatchVariationType.CFG_SCALE_RANGE -> {
+                    variation.values.forEach { cfgValue ->
+                        newConfigs.add(config.copy(cfgScale = cfgValue.toFloatOrNull() ?: config.cfgScale))
+                    }
+                }
+                BatchVariationType.STEPS_RANGE -> {
+                    variation.values.forEach { stepsValue ->
+                        newConfigs.add(config.copy(steps = stepsValue.toIntOrNull() ?: config.steps))
+                    }
+                }
+                BatchVariationType.SCHEDULER_ALL -> {
+                    Scheduler.values().forEach { scheduler ->
+                        newConfigs.add(config.copy(scheduler = scheduler))
+                    }
+                }
+            }
+        }
+        
+        return if (newConfigs.isEmpty()) configs else newConfigs
     }
 }

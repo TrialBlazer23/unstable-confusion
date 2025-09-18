@@ -29,11 +29,14 @@ fun GenerateScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val generationProgress by viewModel.generationProgress.collectAsStateWithLifecycle()
+    val batchProgress by viewModel.batchProgress.collectAsStateWithLifecycle()
+    val batchConfig by viewModel.batchConfig.collectAsStateWithLifecycle()
     val stylePresets by viewModel.stylePresets.collectAsStateWithLifecycle()
     val promptSuggestions by viewModel.promptSuggestions.collectAsStateWithLifecycle()
     
     var showAdvancedSettings by remember { mutableStateOf(false) }
     var showPromptTools by remember { mutableStateOf(false) }
+    var showBatchConfig by remember { mutableStateOf(false) }
     
     Column(
         modifier = Modifier
@@ -59,6 +62,9 @@ fun GenerateScreen(
                 }
                 IconButton(onClick = { showAdvancedSettings = !showAdvancedSettings }) {
                     Icon(Icons.Default.Tune, contentDescription = "Advanced Settings")
+                }
+                IconButton(onClick = { showBatchConfig = !showBatchConfig }) {
+                    Icon(Icons.Default.Queue, contentDescription = "Batch Generation")
                 }
             }
         }
@@ -100,6 +106,35 @@ fun GenerateScreen(
             AdvancedSettingsCard(
                 config = uiState.config,
                 onConfigChange = viewModel::updateGenerationConfig,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            )
+        }
+        
+        // Batch Configuration
+        AnimatedVisibility(visible = showBatchConfig) {
+            BatchConfigCard(
+                baseConfig = uiState.config,
+                batchConfig = batchConfig,
+                onBatchConfigChange = viewModel::updateBatchConfig,
+                onStartBatch = {
+                    batchConfig?.let { config ->
+                        viewModel.generateBatch(config)
+                        showBatchConfig = false
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            )
+        }
+        
+        // Batch progress
+        batchProgress?.let { progress ->
+            BatchProgressCard(
+                batchProgress = progress,
+                onCancel = viewModel::cancelBatchGeneration,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
@@ -156,12 +191,12 @@ fun GenerateScreen(
         // Generate button
         Button(
             onClick = viewModel::generateImage,
-            enabled = !uiState.isGenerating && uiState.prompt.isNotBlank(),
+            enabled = !uiState.isGenerating && uiState.prompt.isNotBlank() && batchProgress == null,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
         ) {
-            if (uiState.isGenerating) {
+            if (uiState.isGenerating || batchProgress != null) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
                     color = MaterialTheme.colorScheme.onPrimary
@@ -169,7 +204,11 @@ fun GenerateScreen(
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Text(
-                text = if (uiState.isGenerating) "Generating..." else "Generate Image",
+                text = when {
+                    batchProgress != null -> "Batch in Progress..."
+                    uiState.isGenerating -> "Generating..."
+                    else -> "Generate Image"
+                },
                 style = MaterialTheme.typography.titleMedium
             )
         }

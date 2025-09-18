@@ -26,9 +26,25 @@ interface ImageGenerationEngine {
     fun generateImage(config: GenerationConfig): Flow<GenerationProgress>
     
     /**
-     * Upscale an existing image
+     * Generate batch of images
+     * Returns a flow of batch generation progress updates
      */
-    suspend fun upscaleImage(imagePath: String, scaleFactor: Int = 2): Result<String>
+    fun generateBatch(batchConfig: BatchConfig): Flow<BatchProgress>
+    
+    /**
+     * Upscale an existing image with advanced configuration
+     */
+    suspend fun upscaleImage(imagePath: String, upscaleConfig: UpscaleConfig): Result<String>
+    
+    /**
+     * Export image with specific configuration
+     */
+    suspend fun exportImage(imagePath: String, outputPath: String, exportConfig: ExportConfig): Result<String>
+    
+    /**
+     * Export multiple images as ZIP archive
+     */
+    suspend fun exportImagesAsZip(imagePaths: List<String>, outputPath: String, exportConfig: ExportConfig): Result<String>
     
     /**
      * Cancel ongoing generation
