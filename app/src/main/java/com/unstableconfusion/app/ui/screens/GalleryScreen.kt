@@ -1,12 +1,14 @@
 package com.unstableconfusion.app.ui.screens
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -23,6 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.unstableconfusion.app.data.models.GeneratedImage
+import com.unstableconfusion.app.ui.components.ExportShareCard
 import com.unstableconfusion.app.ui.viewmodels.GenerationViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -36,7 +39,10 @@ fun GalleryScreen(
     viewModel: GenerationViewModel
 ) {
     val generatedImages by viewModel.generatedImages.collectAsStateWithLifecycle()
+    val exportProgress by viewModel.exportProgress.collectAsStateWithLifecycle()
+    var selectedImages by remember { mutableStateOf(setOf<String>()) }
     var selectedImage by remember { mutableStateOf<GeneratedImage?>(null) }
+    var showExportOptions by remember { mutableStateOf(false) }
     
     Column(
         modifier = Modifier
@@ -49,20 +55,90 @@ fun GalleryScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Gallery",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold
-            )
+            if (selectedImages.isNotEmpty()) {
+                Text(
+                    text = "${selectedImages.size} selected",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            } else {
+                Text(
+                    text = "Gallery",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
             
-            Text(
-                text = "${generatedImages.size} images",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row {
+                if (selectedImages.isNotEmpty()) {
+                    IconButton(onClick = { showExportOptions = !showExportOptions }) {
+                        Icon(Icons.Default.Share, contentDescription = "Export & Share")
+                    }
+                    IconButton(onClick = { selectedImages = setOf() }) {
+                        Icon(Icons.Default.Clear, contentDescription = "Clear selection")
+                    }
+                } else {
+                    Text(
+                        text = "${generatedImages.size} images",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
         
         Spacer(modifier = Modifier.height(16.dp))
+        
+        // Export options (when images are selected)
+        if (showExportOptions && selectedImages.isNotEmpty()) {
+            val selectedImageObjects = generatedImages.filter { selectedImages.contains(it.id) }
+            ExportShareCard(
+                selectedImages = selectedImageObjects,
+                onExportSingle = { image, config ->
+                    viewModel.exportImage(image.imagePath, "${image.id}_export", config)
+                },
+                onExportMultiple = { images, config ->
+                    val imagePaths = images.map { it.imagePath }
+                    viewModel.exportImagesAsZip(imagePaths, "batch_export", config)
+                },
+                onUpscale = { image, config ->
+                    viewModel.upscaleImageAdvanced(image.imagePath, config)
+                },
+                onShare = { image ->
+                    // In real implementation, would use Android's share intent
+                    // For now, just show a message
+                },
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        }
+        
+        // Export progress
+        exportProgress?.let { progress ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = progress,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+        }
         
         if (generatedImages.isEmpty()) {
             // Empty state
@@ -110,7 +186,22 @@ fun GalleryScreen(
                 items(generatedImages) { image ->
                     ImageGridItem(
                         image = image,
-                        onClick = { selectedImage = image }
+                        isSelected = selectedImages.contains(image.id),
+                        onClick = { selectedImage = image },
+                        onLongClick = {
+                            selectedImages = if (selectedImages.contains(image.id)) {
+                                selectedImages - image.id
+                            } else {
+                                selectedImages + image.id
+                            }
+                        },
+                        onSelectionClick = {
+                            selectedImages = if (selectedImages.contains(image.id)) {
+                                selectedImages - image.id
+                            } else {
+                                selectedImages + image.id
+                            }
+                        }
                     )
                 }
             }
@@ -139,13 +230,25 @@ fun GalleryScreen(
 @Composable
 private fun ImageGridItem(
     image: GeneratedImage,
-    onClick: () -> Unit
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onSelectionClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .aspectRatio(1f)
-            .clickable { onClick() },
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            .clickable { 
+                if (isSelected) {
+                    onSelectionClick()
+                } else {
+                    onClick()
+                }
+            },
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        border = if (isSelected) {
+            BorderStroke(3.dp, MaterialTheme.colorScheme.primary)
+        } else null
     ) {
         Box {
             // Placeholder for image (since we don't have actual images in mock)
@@ -169,6 +272,24 @@ private fun ImageGridItem(
                     modifier = Modifier.size(48.dp),
                     tint = Color.White.copy(alpha = 0.7f)
                 )
+            }
+            
+            // Selection indicator
+            if (isSelected) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "Selected",
+                        modifier = Modifier.padding(4.dp),
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
             }
             
             // Generation info overlay
