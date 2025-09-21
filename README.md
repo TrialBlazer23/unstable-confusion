@@ -72,6 +72,27 @@ A fast, private, on-device text-to-image studio for Android that brings Midjourn
 3. Sync Gradle dependencies
 4. Build and run on device or emulator
 
+### Build Verification
+To verify the project builds correctly in your environment, run the provided verification script:
+
+```bash
+./verify_build.sh
+```
+
+Or manually verify with:
+```bash
+# Clean and build
+./gradlew clean build
+
+# Run tests
+./gradlew test
+
+# Generate debug APK
+./gradlew assembleDebug
+```
+
+**Note**: The project requires internet access to download Android Gradle Plugin and dependencies from Google's repositories during the first build.
+
 ### Usage
 1. **Enter Prompt**: Type your image description in the main prompt field
 2. **Refine with Tools**: Use prompt suggestions and negative prompts
